@@ -87,7 +87,30 @@ enum {
    critical. Defining ROM_BOOT_ADDRESS in the SoC will make the BIOS jump to
    it at boot. */
 void romboot(void)
-{
+{	
+	printf("Requesting slot 0 program download to 0x%08x\n", ROM_BOOT_ADDRESS);
+
+	main_bridge_slot_id_write(0);
+	main_bridge_data_offset_write(0);
+
+	// Entire file
+	long size = main_bridge_file_size_read();
+
+	printf("Requesting read of size 0x%08x\n", size);
+
+	// TODO: Pocket bug prevents us from simply passing 0xFFFFFFFF
+	main_bridge_length_write(size);
+	main_ram_data_address_write(ROM_BOOT_ADDRESS);
+
+	main_bridge_request_read_write(1);
+
+	while (main_bridge_status_read() != 1) {
+		// Stall until bridge read completes
+		asm("");
+	}
+
+	printf("Booting slot 0\n");
+	
 	boot(0, 0, 0, ROM_BOOT_ADDRESS);
 }
 #endif
