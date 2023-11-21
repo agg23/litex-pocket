@@ -90,21 +90,21 @@ void romboot(void)
 {	
 	printf("Requesting slot 0 program download to 0x%08x\n", ROM_BOOT_ADDRESS);
 
-	main_bridge_slot_id_write(0);
-	main_bridge_data_offset_write(0);
+	apf_bridge_slot_id_write(0);
+	apf_bridge_data_offset_write(0);
 
 	// Entire file
-	long size = main_bridge_file_size_read();
+	long size = apf_bridge_file_size_read();
 
-	printf("Requesting read of size 0x%08x\n", size);
+	printf("Requesting read of size 0x%08lx\n", size);
 
 	// TODO: Pocket bug prevents us from simply passing 0xFFFFFFFF
-	main_bridge_length_write(size);
-	main_ram_data_address_write(ROM_BOOT_ADDRESS);
+	apf_bridge_transfer_length_write(size);
+	apf_bridge_ram_data_address_write(ROM_BOOT_ADDRESS);
 
-	main_bridge_request_read_write(1);
+	apf_bridge_request_read_write(1);
 
-	while (main_bridge_status_read() != 1) {
+	while (apf_bridge_status_read() != 1) {
 		// Stall until bridge read completes
 		asm("");
 	}
