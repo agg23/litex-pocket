@@ -199,6 +199,13 @@ __attribute__((__used__)) int main(int i, char **c)
 #endif
 	printf("\n");
 
+	// Blank the framebuffer
+	// Only need half of the pixels, as each word has two pixels
+	for (int i = 0; i < MAX_DISPLAY_WIDTH * MAX_DISPLAY_HEIGHT / 2; i++) {
+		int* address = VIDEO_FRAMEBUFFER_BASE + i * 4;
+
+		*address = 0x00000000;
+	}
 
 	/* Initialize Video Framebuffer FIXME: Move */
 #ifdef CSR_VIDEO_FRAMEBUFFER_BASE
