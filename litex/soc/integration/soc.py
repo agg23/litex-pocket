@@ -108,7 +108,7 @@ class SoCCSRRegion:
 class SoCBusHandler(LiteXModule):
     supported_standard      = ["wishbone", "axi-lite", "axi"]
     supported_data_width    = [32, 64, 128, 256, 512]
-    supported_address_width = [32]
+    supported_address_width = [32, 64]
 
     # Creation -------------------------------------------------------------------------------------
     def __init__(self, name="SoCBusHandler",
@@ -371,9 +371,9 @@ class SoCBusHandler(LiteXModule):
                 if direction == "s2m":
                     self.comb += adapted_interface.connect(interface, omit={"adr"})
                     if (interface.addressing == "word") and (self.addressing == "byte"):
-                        self.comb += interface.adr[address_shift:].eq(adapted_interface.adr)
-                    if (interface.addressing == "byte") and (self.addressing == "word"):
                         self.comb += interface.adr.eq(adapted_interface.adr[address_shift:])
+                    if (interface.addressing == "byte") and (self.addressing == "word"):
+                        self.comb += interface.adr[address_shift:].eq(adapted_interface.adr)
                 return adapted_interface
 
         # Bus-Standard conversion helper.
@@ -1039,9 +1039,17 @@ class SoC(LiteXModule, SoCCoreCompat):
             "axi-lite": axi.AXILite2CSR,
             "axi"     : axi.AXILite2CSR, # Note: CSR is a slow bus so using AXI-Lite is fine.
         }[self.bus.standard]
+        bus_bridge_cls = {
+            "wishbone": wishbone.Interface,
+            "axi-lite": axi.AXILiteInterface,
+            "axi"     : axi.AXILiteInterface,
+        }[self.bus.standard]
         csr_bridge_name = f"{name}_bridge"
         self.check_if_exists(csr_bridge_name)
         csr_bridge = csr_bridge_cls(
+            bus_bridge_cls(
+                address_width = self.bus.address_width,
+                data_width    = self.bus.data_width),
             bus_csr = csr_bus.Interface(
                 address_width = self.csr.address_width,
                 data_width    = self.csr.data_width),
@@ -1432,10 +1440,7 @@ class LiteXSoC(SoC):
         # JTAG UART.
         elif uart_name in ["jtag_uart"]:
             from litex.soc.cores.jtag import JTAGPHY
-            # Run JTAG-UART in sys_jtag clk domain similar to sys clk domain but without sys_rst.
-            self.cd_sys_jtag = ClockDomain()
-            self.comb += self.cd_sys_jtag.clk.eq(ClockSignal("sys"))
-            uart_phy = JTAGPHY(device=self.platform.device, clock_domain="sys_jtag", platform=self.platform)
+            uart_phy = JTAGPHY(device=self.platform.device, platform=self.platform)
             uart     = UART(uart_phy, **uart_kwargs)
 
         # Sim.
@@ -1519,7 +1524,11 @@ class LiteXSoC(SoC):
         # Core.
         self.check_if_exists(name)
         jtagbone_phy = JTAGPHY(device=self.platform.device, chain=chain, platform=self.platform)
-        jtagbone = uart.UARTBone(phy=jtagbone_phy, clk_freq=self.sys_clk_freq)
+        jtagbone = uart.UARTBone(
+            phy           = jtagbone_phy,
+            clk_freq      = self.sys_clk_freq,
+            address_width = self.bus.address_width
+        )
         self.add_module(name=f"{name}_phy", module=jtagbone_phy)
         self.add_module(name=name,          module=jtagbone)
         self.bus.add_master(name=name, master=jtagbone.wishbone)
@@ -1748,6 +1757,7 @@ class LiteXSoC(SoC):
         ethmac_region_size = (ethmac.rx_slots.constant + ethmac.tx_slots.constant)*ethmac.slot_size.constant
         ethmac_region = SoCRegion(origin=self.mem_map.get(name, None), size=ethmac_region_size, cached=False)
         self.bus.add_slave(name=name, slave=ethmac.bus, region=ethmac_region)
+
         # Add IRQs (if enabled).
         if self.irq.enabled:
             self.irq.add(name, use_loc_if_exists=True)
